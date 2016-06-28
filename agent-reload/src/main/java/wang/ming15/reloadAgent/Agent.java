@@ -108,18 +108,6 @@ public class Agent {
      * @param jarPath
      */
     public static void loadFromZipFile(String jarPath) {
-		try {
-			String name = ManagementFactory.getRuntimeMXBean().getName();
-			String pid = name.split("@")[0];
-			System.out.println(pid);
-			VirtualMachine vm = VirtualMachine.attach(pid);
-			for (int i = 0; i < 100; i++) {
-				TimeUnit.SECONDS.sleep(10);
-				vm.loadAgent("D:\\ming\\test\\target\\test-1.0-SNAPSHOT.jar");
-			}
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
 
 		Map<String, byte[]> loadClass = new HashMap<>();
 		try(InputStream in = new BufferedInputStream(new FileInputStream(new File(jarPath)));

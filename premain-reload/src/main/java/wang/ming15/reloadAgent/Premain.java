@@ -52,7 +52,7 @@ public class Premain {
                 }
             }
 
-            CodeReloader.newOne().startWatchFileChange(watchPath, fileName, prfixName);
+            CodeReloader.newOne().startWatchFileChange(watchPath, fileName);
         } catch (IOException e) {
             logger.error("", e);
         }

@@ -2,7 +2,6 @@ package wang.ming15.reloadAgent;
 
 import java.io.File;
 import java.io.IOException;
-
 import org.apache.commons.io.monitor.FileAlterationListenerAdaptor;
 import org.apache.commons.io.monitor.FileAlterationMonitor;
 import org.apache.commons.io.monitor.FileAlterationObserver;
@@ -29,7 +28,7 @@ public class CodeReloader {
 	 * @param prfixName  热加载文件的全限定名的前缀, 指定这个是为了只热加载业务的
 	 * @throws IOException
 	 */
-    public void startWatchFileChange(String watchPath, String fileName, String prfixName) throws IOException {
+    public void startWatchFileChange(String watchPath, String fileName) throws IOException {
         if (StringUtils.isBlank(watchPath) || StringUtils.isBlank(fileName)) {
             logger.error("watchPath : " + watchPath + ", fileName " + fileName);
             return;

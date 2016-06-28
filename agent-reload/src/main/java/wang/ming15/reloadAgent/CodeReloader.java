@@ -2,7 +2,10 @@ package wang.ming15.reloadAgent;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
+import java.util.concurrent.TimeUnit;
 
+import com.sun.tools.attach.VirtualMachine;
 import org.apache.commons.io.monitor.FileAlterationListenerAdaptor;
 import org.apache.commons.io.monitor.FileAlterationMonitor;
 import org.apache.commons.io.monitor.FileAlterationObserver;
@@ -73,4 +76,17 @@ public class CodeReloader {
     public static CodeReloader newOne() {
         return new CodeReloader();
     }
+
+
+	public static void init(String jarFile) {
+		try {
+			String name = ManagementFactory.getRuntimeMXBean().getName();
+			String pid = name.split("@")[0];
+			System.out.println(pid);
+			VirtualMachine vm = VirtualMachine.attach(pid);
+			vm.loadAgent(jarFile);
+		} catch (Exception e) {
+			logger.error("", e);
+		}
+	}
 }
