@@ -1,0 +1,3 @@
+Manifest-Version: 1.0
+Agent-Class: wang.ming15.reloadAgent.Agent
+Can-Redefine-Classes: true
