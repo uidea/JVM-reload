@@ -1,17 +1,20 @@
 package wang.ming15.reloadAgent;
 
+import com.sun.tools.attach.VirtualMachine;
 import org.apache.log4j.Logger;
 
 import java.io.*;
 import java.lang.instrument.ClassDefinition;
 import java.lang.instrument.Instrumentation;
 import java.lang.instrument.UnmodifiableClassException;
+import java.lang.management.ManagementFactory;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipInputStream;
@@ -37,9 +40,7 @@ public class Agent {
 	// 将已经加载过的类缓存起来, 避免没有修改过的类再次被重新加载
 	private static final Map<String, String> classMD5 = new ConcurrentHashMap<>();
 
-    public static void agentmain(String agentArgs, Instrumentation inst)
-            throws ClassNotFoundException, UnmodifiableClassException,
-            InterruptedException {
+    public static void agentmain(String agentArgs, Instrumentation inst) {
         instrumentation = inst;
         try {
             Properties properties = new Properties();
@@ -107,6 +108,19 @@ public class Agent {
      * @param jarPath
      */
     public static void loadFromZipFile(String jarPath) {
+		try {
+			String name = ManagementFactory.getRuntimeMXBean().getName();
+			String pid = name.split("@")[0];
+			System.out.println(pid);
+			VirtualMachine vm = VirtualMachine.attach(pid);
+			for (int i = 0; i < 100; i++) {
+				TimeUnit.SECONDS.sleep(10);
+				vm.loadAgent("D:\\ming\\test\\target\\test-1.0-SNAPSHOT.jar");
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
 		Map<String, byte[]> loadClass = new HashMap<>();
 		try(InputStream in = new BufferedInputStream(new FileInputStream(new File(jarPath)));
             ZipInputStream zin = new ZipInputStream(in);) {
