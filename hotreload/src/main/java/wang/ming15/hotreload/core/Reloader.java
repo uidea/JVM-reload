@@ -37,38 +37,49 @@ public class Reloader {
 	// 将已经加载过的类缓存起来, 避免没有修改过的类再次被重新加载
 	private static final Map<String, String> classMD5 = new ConcurrentHashMap<>();
 
+	private static String watchPath;
+	private static String reloadJarFile;
+	private static String prfixName;
+
     public static void init(String agentArgs, Instrumentation inst) {
         instrumentation = inst;
+
         try {
             Properties properties = new Properties();
-			String configFilePath = "./reload.properties";
+			String configFilePath = "/reload.properties";
 			InputStream in = Reloader.class.getResourceAsStream(configFilePath);
 			if (in == null) {
 				logger.error("Cant Find Config File : " + configFilePath);
 				System.exit(0);
 			}
             properties.load(in);
-            String watchPath = properties.getProperty("watchPath");
-            String reloadJarFile = properties.getProperty("reloadJarFile");
-            String prfixName = properties.getProperty("prfixName");
+            watchPath = properties.getProperty("watchPath");
+            reloadJarFile = properties.getProperty("reloadJarFile");
+            prfixName = properties.getProperty("prfixName");
 
-            Class[] allLoadClasses = instrumentation.getAllLoadedClasses();
-            for (Class loadedClass : allLoadClasses) {
-                if (loadedClass.getName().startsWith(prfixName)) {
-                    allLoadClassesMap.put(loadedClass.getName(), loadedClass);
-                }
-            }
             logger.info("Reloader Started.");
             logger.info("Watch Path : " + watchPath);
             logger.info("ReloadJarFile : " + reloadJarFile);
             logger.info("Prfix Name : " + prfixName);
-            logger.info("Haven Loaded Class Count (" + prfixName + ") : " + allLoadClasses.length);
+
+			initAllLoadedClasses();
+
             ReloaderMonitor.newOne().startWatchFileChange(watchPath, reloadJarFile);
         } catch (IOException e) {
             logger.error("", e);
         }
-
     }
+
+	private static void initAllLoadedClasses() {
+		Class[] allLoadClasses = instrumentation.getAllLoadedClasses();
+		for (Class loadedClass : allLoadClasses) {
+			if (loadedClass.getCanonicalName().startsWith(prfixName)) {
+				allLoadClassesMap.put(loadedClass.getName(), loadedClass);
+			}
+		}
+
+		logger.info("Haven Loaded Class Count (" + prfixName + ") : " + allLoadClasses.length);
+	}
 
     /**
      * 遍历某个目录加载所有的class文件
@@ -115,6 +126,8 @@ public class Reloader {
      * @param jarPath
      */
     public static void loadFromZipFile(String jarPath) {
+		initAllLoadedClasses();
+
 		Map<String, byte[]> loadClass = new HashMap<>();
 		try(InputStream in = new BufferedInputStream(new FileInputStream(new File(jarPath)));
             ZipInputStream zin = new ZipInputStream(in);) {
@@ -164,10 +177,10 @@ public class Reloader {
     private static void redefineClassesFromBytes(byte[] bytes, String fileName) {
         try {
         	String className = getClassName(fileName);
-            logger.info("Start Hot Reload Class : " + fileName + "  (" + className + ")");
 	        Class loadedClass = allLoadClassesMap.get(className);
 			if (loadedClass != null) {
 				instrumentation.redefineClasses(new ClassDefinition(loadedClass, bytes));
+            	logger.info("Hot Reload Class : " + fileName + "  (" + className + ")");
 			}
         } catch (final Exception e) {
             logger.error("Code Reload Failed : " + fileName, e);

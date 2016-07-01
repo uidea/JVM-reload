@@ -10,7 +10,7 @@ public class PremainExampleMain {
 
 		System.out.println("premain started!!!");
 		while (true) {
-			Printer.print();
+			Printer.INSTANCE.print();
 			TimeUnit.SECONDS.sleep(5);
 		}
 	}
