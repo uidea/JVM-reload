@@ -1,3 +1,0 @@
-Manifest-Version: 1.0
-Agent-Class: wang.ming15.hotreload.Agent
-Can-Redefine-Classes: true
