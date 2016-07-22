@@ -45,7 +45,7 @@ public class CodeReloader {
 					return;
 				}
 				logger.info("Jar File Changed, start hot reload!!!");
-				Premain.loadFromZipFile(file.getAbsolutePath());
+//				Premain.loadFromZipFile(file.getAbsolutePath());
 			}
 
 		});

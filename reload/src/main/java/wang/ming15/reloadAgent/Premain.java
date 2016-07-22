@@ -5,11 +5,11 @@ import org.apache.log4j.Logger;
 import java.io.*;
 import java.lang.instrument.ClassDefinition;
 import java.lang.instrument.Instrumentation;
+import java.lang.reflect.GenericSignatureFormatError;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -38,75 +38,50 @@ public class Premain {
 
     public static void premain(String agentArgs, Instrumentation inst) {
         instrumentation = inst;
-        try {
-            Properties properties = new Properties();
-            properties.load(new FileInputStream(new File("reload.properties")));
-            String watchPath = properties.getProperty("watchPath");
-            String fileName = properties.getProperty("fileName");
-            String prfixName = properties.getProperty("prfixName");
+    }
 
+    public static void cacheAllLoadedClasses(String prfixName) {
+        try {
             Class[] allLoadClasses = instrumentation.getAllLoadedClasses();
             for (Class loadedClass : allLoadClasses) {
                 if (loadedClass.getName().startsWith(prfixName)) {
                     allLoadClassesMap.put(loadedClass.getName(), loadedClass);
                 }
             }
-
-            CodeReloader.newOne().startWatchFileChange(watchPath, fileName, prfixName);
-        } catch (IOException e) {
+        } catch (Exception e) {
             logger.error("", e);
-        }
-
-    }
-
-    /**
-     * 遍历某个目录加载所有的class文件
-     * @param directionPath
-     */
-    public static void loadFromDirection(String directionPath) {
-        loadFromDirection(new File(directionPath), "");
-    }
-
-    private static void loadFromDirection(File dir, String parantName) {
-        try {
-            for (File file : dir.listFiles()) {
-                if (file.isFile() && !file.getName().endsWith(".class")) {
-                    continue;
-                }
-                if (file.isDirectory()) {
-                    String fileName = file.getName();
-                    if (parantName != null && !parantName.equals("")) {
-                        fileName = parantName + "." + fileName;
-                    }
-                    loadFromDirection(file, fileName);
-                    continue;
-                }
-                try(InputStream input = new FileInputStream(file);) {
-                    String fileName = file.getPath();
-                    String className = findClassName(fileName);
-                    if (parantName != null && !parantName.equals("")) {
-                        className = parantName + "." + className;
-                    }
-					byte[] bytes = new byte[input.available()];
-					input.read(bytes);
-                    redefineClassesFromBytes(bytes, className);
-                } catch (final Exception e) {
-                    e.printStackTrace();
-                }
-            }
-        } catch (final Exception e) {
-            e.printStackTrace();
         }
     }
 
     /**
      * 从jar包或者ZIP里加载所有的class文件
-     * @param jarPath
-     */
-    public static void loadFromZipFile(String jarPath) {
+	 * @param reloadJarPath
+	 */
+    public static String loadFromZipFile(String workJarPath, String reloadJarPath, String prfixName) {
+		// 将已经加载进来的类都加载一遍, 避免出现没有加载过的类也会被热更, 而发生异常
+        cacheAllLoadedClasses(prfixName);
+
+		// 将原始的jar文件读取一遍，进行md5的初始化工作, 避免第一次热更的时候将所有的类都热更
+		if (classMD5.size() == 0) {
+			getLoadedClass(workJarPath);
+		}
+
+		Map<String, byte[]> loadClass = getLoadedClass(reloadJarPath);
+
+		StringBuffer stringBuffer = new StringBuffer();
+		for (Map.Entry<String, byte[]> entry : loadClass.entrySet()) {
+            boolean isOk = redefineClassesFromBytes(entry.getValue(), entry.getKey());
+			if (!isOk) {
+				stringBuffer.append(entry.getKey()).append("<br>");
+			}
+		}
+		return stringBuffer.toString();
+    }
+
+	public static Map<String, byte[]> getLoadedClass(String jarPath) {
 		Map<String, byte[]> loadClass = new HashMap<>();
 		try(InputStream in = new BufferedInputStream(new FileInputStream(new File(jarPath)));
-            ZipInputStream zin = new ZipInputStream(in);) {
+			ZipInputStream zin = new ZipInputStream(in)) {
             ZipEntry ze;
             while ((ze = zin.getNextEntry()) != null) {
                 if (ze.isDirectory()) {
@@ -117,55 +92,83 @@ public class Premain {
                         if (!fileName.endsWith(".class")) {
                             continue;
                         }
-						try(ZipFile zf = new ZipFile(jarPath); InputStream input = zf.getInputStream(ze);) {
+						try(ZipFile zf = new ZipFile(jarPath); InputStream input = zf.getInputStream(ze);
+							ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream()) {
 							if (input == null) {
 								logger.error("Code Reload cant find file : " + fileName);
 								continue;
 							}
-							byte[] bytes = new byte[input.available()];
-							input.read(bytes);
+							int b = 0;
+							while ((b = input.read()) != -1) {
+								byteArrayOutputStream.write(b);
+							}
+							byte[] bytes = byteArrayOutputStream.toByteArray();
 							if (canLoad(bytes, fileName)) {
 								loadClass.put(fileName, bytes);
 							}
 						}
                     }
                 }
-
             }
         } catch (final Exception e) {
             e.printStackTrace();
         }
-
-		for (Map.Entry<String, byte[]> entry : loadClass.entrySet()) {
-            redefineClassesFromBytes(entry.getValue(), entry.getKey());
-		}
-    }
-
-    private static String findClassName(String fileName) {
-        int idx = fileName.lastIndexOf("\\");
-        fileName = fileName.substring(idx + 1);
-        fileName = fileName.split("\\.class")[0];
-        return fileName;
-    }
+		return loadClass;
+	}
 
     /* 使用instrumentation将读取的class byte数组加载进虚拟机
      */
-    private static void redefineClassesFromBytes(byte[] bytes, String fileName) {
+    private static boolean redefineClassesFromBytes(byte[] bytes, String fileName) {
+		String className = getClassName(fileName);
         try {
-        	String className = getClassName(fileName);
             logger.info("Start Hot Reload Class : " + fileName + "  (" + className + ")");
 	        Class loadedClass = allLoadClassesMap.get(className);
 			if (loadedClass != null) {
 				instrumentation.redefineClasses(new ClassDefinition(loadedClass, bytes));
 			}
+			return true;
         } catch (final Exception e) {
             logger.error("Code Reload Failed : " + fileName, e);
-        } catch (Error error) {
-			logger.error("Code Reload Failed : " + fileName, error);
+			return false;
+        } catch (final GenericSignatureFormatError error) {
+			logger.error("Code Reload GenericSignatureFormatError : " + fileName, error);
+			return false;
+		} catch (final UnsupportedClassVersionError error) {
+			logger.error("Code Reload UnsupportedClassVersionError : " + fileName, error);
+			return false;
+		} catch (final Error error) {
+			printErrorFile(bytes, fileName);
+			logger.error("Code Reload Error : " + fileName + " -> " + bytes.length, error);
+			return false;
 		}
-    }
+	}
 
-    private static String getClassName(String fileName) {
+	private static void printErrorFile(byte[] bytes, String fileName) {
+		try {
+			File file = new File("./errorFiles/" + fileName);
+			if (!file.exists()) {
+				String path = file.getAbsolutePath();
+				int index = path.lastIndexOf("/");
+				if (index == -1) {
+					index = path.lastIndexOf("\\");
+				}
+				String dirPath = path.substring(0, index);
+				File dir = new File(dirPath);
+				if (!dir.exists()) {
+					dir.mkdirs();
+				}
+			}
+			FileOutputStream fileOutputStream = new FileOutputStream(file);
+			fileOutputStream.write(bytes);
+			fileOutputStream.close();
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+
+	private static String getClassName(String fileName) {
         fileName = fileName.split("\\.class")[0];
         fileName = fileName.replace("\\\\", ".");
         fileName = fileName.replace("/", ".");
